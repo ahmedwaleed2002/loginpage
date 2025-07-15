@@ -34,29 +34,24 @@ const {
   validateProfileUpdate,
   validateChangePassword
 } = require('../middleware/validation');
-const {
-  authLimiter,
-  passwordResetLimiter,
-  registrationLimiter,
-  emailVerificationLimiter
-} = require('../middleware/rateLimiter');
+// Rate limiters removed for development/testing
 
 // Authentication routes
-router.post('/register', registrationLimiter, validateRegistration, register);
-router.post('/login', authLimiter, validateLogin, login);
-router.post('/complete-login', authLimiter, completeLogin);
+router.post('/register', validateRegistration, register);
+router.post('/login', validateLogin, login);
+router.post('/complete-login', completeLogin);
 router.post('/logout', logout);
 
 // Email verification routes
-router.post('/verify-email', emailVerificationLimiter, validateEmailVerification, verifyEmail);
-router.post('/resend-verification', emailVerificationLimiter, resendVerificationEmail);
+router.post('/verify-email', validateEmailVerification, verifyEmail);
+router.post('/resend-verification', resendVerificationEmail);
 
 // OTP routes
 router.post('/send-otp', sendOTP);
 router.post('/verify-otp', verifyOTP);
 
 // Password reset routes
-router.post('/request-password-reset', passwordResetLimiter, validatePasswordResetRequest, requestPasswordReset);
+router.post('/request-password-reset', validatePasswordResetRequest, requestPasswordReset);
 router.post('/reset-password', validatePasswordReset, resetPassword);
 router.post('/reset-password-otp', resetPasswordWithOTP);
 
