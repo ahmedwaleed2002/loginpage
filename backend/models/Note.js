@@ -1,18 +1,4 @@
 const { db } = require('../config/firebase');
-const { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  updateDoc, 
-  deleteDoc,
-  query, 
-  where, 
-  getDocs,
-  orderBy,
-  limit,
-  startAfter
-} = require('firebase/firestore');
 
 class Note {
   constructor(noteData) {
@@ -29,7 +15,7 @@ class Note {
   // Create a new note
   static async create(noteData) {
     try {
-      const noteRef = doc(collection(db, 'notes'));
+      const noteRef = db.collection('notes').doc();
       
       const newNote = new Note({
         id: noteRef.id,
@@ -38,15 +24,18 @@ class Note {
         updatedAt: new Date()
       });
 
-      await setDoc(noteRef, {
+      // Clean note data to remove undefined values
+      const cleanNoteData = {
         title: newNote.title,
         content: newNote.content,
         userId: newNote.userId,
         createdAt: newNote.createdAt,
         updatedAt: newNote.updatedAt,
-        tags: newNote.tags,
-        isPublic: newNote.isPublic
-      });
+        tags: newNote.tags || [],
+        isPublic: newNote.isPublic || false
+      };
+
+      await noteRef.set(cleanNoteData);
 
       return newNote;
     } catch (error) {
@@ -57,8 +46,8 @@ class Note {
   // Find note by ID
   static async findById(id) {
     try {
-      const noteDoc = await getDoc(doc(db, 'notes', id));
-      if (noteDoc.exists()) {
+      const noteDoc = await db.collection('notes').doc(id).get();
+      if (noteDoc.exists) {
         return new Note({ id: noteDoc.id, ...noteDoc.data() });
       }
       return null;
@@ -70,38 +59,29 @@ class Note {
   // Find notes by user ID
   static async findByUserId(userId, options = {}) {
     try {
-      const { page = 1, limit: pageLimit = 10, orderBy: orderField = 'updatedAt', orderDirection = 'desc' } = options;
+      const { page = 1, limit: pageLimit = 10 } = options;
       
-      let q = query(
-        collection(db, 'notes'),
-        where('userId', '==', userId),
-        orderBy(orderField, orderDirection),
-        limit(pageLimit)
-      );
+      let noteQuery = db.collection('notes')
+        .where('userId', '==', userId)
+        .limit(pageLimit);
 
-      // For pagination
+      // For pagination (simplified for now)
       if (page > 1) {
         const offset = (page - 1) * pageLimit;
-        const offsetQuery = query(
-          collection(db, 'notes'),
-          where('userId', '==', userId),
-          orderBy(orderField, orderDirection),
-          limit(offset)
-        );
-        const offsetSnapshot = await getDocs(offsetQuery);
+        const offsetQuery = db.collection('notes')
+          .where('userId', '==', userId)
+          .limit(offset);
+        const offsetSnapshot = await offsetQuery.get();
         if (!offsetSnapshot.empty) {
           const lastDoc = offsetSnapshot.docs[offsetSnapshot.docs.length - 1];
-          q = query(
-            collection(db, 'notes'),
-            where('userId', '==', userId),
-            orderBy(orderField, orderDirection),
-            startAfter(lastDoc),
-            limit(pageLimit)
-          );
+          noteQuery = db.collection('notes')
+            .where('userId', '==', userId)
+            .startAfter(lastDoc)
+            .limit(pageLimit);
         }
       }
 
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await noteQuery.get();
       const notes = [];
       
       querySnapshot.forEach((doc) => {
@@ -137,16 +117,21 @@ class Note {
   // Update note
   async update(updateData) {
     try {
-      const noteRef = doc(db, 'notes', this.id);
-      const updatedData = {
-        ...updateData,
-        updatedAt: new Date()
-      };
+      const noteRef = db.collection('notes').doc(this.id);
+      
+      // Clean the update data to remove undefined values
+      const cleanUpdateData = { updatedAt: new Date() };
+      
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] !== undefined) {
+          cleanUpdateData[key] = updateData[key];
+        }
+      });
 
-      await updateDoc(noteRef, updatedData);
+      await noteRef.update(cleanUpdateData);
       
       // Update current instance
-      Object.assign(this, updatedData);
+      Object.assign(this, cleanUpdateData);
       
       return this;
     } catch (error) {
@@ -157,7 +142,7 @@ class Note {
   // Delete note
   async delete() {
     try {
-      await deleteDoc(doc(db, 'notes', this.id));
+      await db.collection('notes').doc(this.id).delete();
       return true;
     } catch (error) {
       throw new Error(`Error deleting note: ${error.message}`);

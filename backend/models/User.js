@@ -1,43 +1,112 @@
 const { db } = require('../config/firebase');
-const { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  updateDoc, 
-  query, 
-  where, 
-  getDocs 
-} = require('firebase/firestore');
 const bcrypt = require('bcryptjs');
+
+// Data validation utilities
+const validateEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+const validatePassword = (password) => {
+  return password && password.length >= 8;
+};
+
+const sanitizeString = (str) => {
+  if (typeof str !== 'string') return str;
+  return str.trim().replace(/[<>"'&]/g, '');
+};
+
+// Helper to convert Firebase Timestamp to Date safely
+const toDate = (timestamp) => {
+  if (!timestamp) return null;
+  if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+    return timestamp.toDate();
+  }
+  if (timestamp instanceof Date) {
+    return timestamp;
+  }
+  return new Date(timestamp);
+};
+
+// Helper to format dates consistently for Firestore
+const formatDateForFirestore = (date) => {
+  if (!date) return null;
+  return new Date(date);
+};
 
 class User {
   constructor(userData) {
+    // Validate and sanitize required fields
+    if (!userData.email || !validateEmail(userData.email)) {
+      throw new Error('Valid email is required');
+    }
+    
     this.id = userData.id;
-    this.email = userData.email;
-    this.password = userData.password;
-    this.firstName = userData.firstName;
-    this.lastName = userData.lastName;
-    this.isVerified = userData.isVerified || false;
-    this.verificationToken = userData.verificationToken;
-    this.passwordResetToken = userData.passwordResetToken;
-    this.passwordResetExpires = userData.passwordResetExpires;
-    this.rememberMe = userData.rememberMe || false;
-    this.lastLogin = userData.lastLogin;
-    this.createdAt = userData.createdAt || new Date();
-    this.updatedAt = userData.updatedAt || new Date();
-    this.loginAttempts = userData.loginAttempts || 0;
-    this.lockUntil = userData.lockUntil;
+    this.email = sanitizeString(userData.email).toLowerCase();
+    this.password = userData.password; // Never sanitize password
+    this.firstName = sanitizeString(userData.firstName || '');
+    this.lastName = sanitizeString(userData.lastName || '');
+    this.isVerified = Boolean(userData.isVerified);
+    this.verificationToken = userData.verificationToken || null;
+    this.passwordResetToken = userData.passwordResetToken || null;
+    this.passwordResetExpires = toDate(userData.passwordResetExpires);
+    this.rememberMe = Boolean(userData.rememberMe);
+    this.lastLogin = toDate(userData.lastLogin);
+    this.createdAt = toDate(userData.createdAt) || new Date();
+    this.updatedAt = toDate(userData.updatedAt) || new Date();
+    this.loginAttempts = Number(userData.loginAttempts) || 0;
+    this.lockUntil = toDate(userData.lockUntil);
+    
+    // OTP fields
+    this.otp = userData.otp || null;
+    this.otpExpires = toDate(userData.otpExpires);
+    this.otpPurpose = userData.otpPurpose || null;
+    
     // GitHub OAuth fields
-    this.githubId = userData.githubId;
-    this.githubUsername = userData.githubUsername;
-    this.githubAccessToken = userData.githubAccessToken;
+    this.githubId = userData.githubId || null;
+    this.githubUsername = sanitizeString(userData.githubUsername || '');
+    this.githubAccessToken = userData.githubAccessToken || null;
+  }
+  
+  // Convert user data to Firestore-safe format
+  toFirestoreData() {
+    const data = {
+      email: this.email,
+      firstName: this.firstName,
+      lastName: this.lastName,
+      isVerified: this.isVerified,
+      rememberMe: this.rememberMe,
+      loginAttempts: this.loginAttempts,
+      createdAt: formatDateForFirestore(this.createdAt),
+      updatedAt: formatDateForFirestore(this.updatedAt)
+    };
+    
+    // Only include fields that have values
+    if (this.password) data.password = this.password;
+    if (this.verificationToken) data.verificationToken = this.verificationToken;
+    if (this.passwordResetToken) data.passwordResetToken = this.passwordResetToken;
+    if (this.passwordResetExpires) data.passwordResetExpires = formatDateForFirestore(this.passwordResetExpires);
+    if (this.lastLogin) data.lastLogin = formatDateForFirestore(this.lastLogin);
+    if (this.lockUntil) data.lockUntil = formatDateForFirestore(this.lockUntil);
+    if (this.githubId) data.githubId = this.githubId;
+    if (this.githubUsername) data.githubUsername = this.githubUsername;
+    if (this.githubAccessToken) data.githubAccessToken = this.githubAccessToken;
+    if (this.otp) data.otp = this.otp;
+    if (this.otpExpires) data.otpExpires = formatDateForFirestore(this.otpExpires);
+    if (this.otpPurpose) data.otpPurpose = this.otpPurpose;
+    
+    return data;
   }
 
   // Create a new user
   static async create(userData) {
     try {
-      const userRef = doc(collection(db, 'users'));
+      // Validate password before hashing
+      if (!validatePassword(userData.password)) {
+        throw new Error('Password must be at least 8 characters long');
+      }
+      
+      const userRef = db.collection('users').doc();
       const hashedPassword = await bcrypt.hash(userData.password, parseInt(process.env.BCRYPT_SALT_ROUNDS));
       
       const newUser = new User({
@@ -48,37 +117,29 @@ class User {
         updatedAt: new Date()
       });
 
-      await setDoc(userRef, {
-        email: newUser.email,
-        password: newUser.password,
-        firstName: newUser.firstName,
-        lastName: newUser.lastName,
-        isVerified: newUser.isVerified,
-        verificationToken: newUser.verificationToken,
-        passwordResetToken: newUser.passwordResetToken,
-        passwordResetExpires: newUser.passwordResetExpires,
-        rememberMe: newUser.rememberMe,
-        lastLogin: newUser.lastLogin,
-        createdAt: newUser.createdAt,
-        updatedAt: newUser.updatedAt,
-        loginAttempts: newUser.loginAttempts,
-        lockUntil: newUser.lockUntil,
-        githubId: newUser.githubId,
-        githubUsername: newUser.githubUsername,
-        githubAccessToken: newUser.githubAccessToken
+      // Use the new toFirestoreData method for consistent formatting
+      const firestoreData = newUser.toFirestoreData();
+      
+      console.log('🔧 Creating user in Firestore with data:', {
+        ...firestoreData,
+        password: '[REDACTED]'
       });
-
+      
+      await userRef.set(firestoreData);
+      
+      console.log('✅ User created successfully in Firestore');
       return newUser;
     } catch (error) {
+      console.error('❌ Error creating user:', error.message);
       throw new Error(`Error creating user: ${error.message}`);
     }
-  }
+  };
 
   // Find user by ID
   static async findById(id) {
     try {
-      const userDoc = await getDoc(doc(db, 'users', id));
-      if (userDoc.exists()) {
+      const userDoc = await db.collection('users').doc(id).get();
+      if (userDoc.exists) {
         return new User({ id: userDoc.id, ...userDoc.data() });
       }
       return null;
@@ -90,8 +151,7 @@ class User {
   // Find user by email
   static async findByEmail(email) {
     try {
-      const q = query(collection(db, 'users'), where('email', '==', email));
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await db.collection('users').where('email', '==', email).get();
       
       if (!querySnapshot.empty) {
         const userDoc = querySnapshot.docs[0];
@@ -106,8 +166,7 @@ class User {
   // Find user by verification token
   static async findByVerificationToken(token) {
     try {
-      const q = query(collection(db, 'users'), where('verificationToken', '==', token));
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await db.collection('users').where('verificationToken', '==', token).get();
       
       if (!querySnapshot.empty) {
         const userDoc = querySnapshot.docs[0];
@@ -122,15 +181,15 @@ class User {
   // Find user by password reset token
   static async findByPasswordResetToken(token) {
     try {
-      const q = query(collection(db, 'users'), where('passwordResetToken', '==', token));
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await db.collection('users').where('passwordResetToken', '==', token).get();
       
       if (!querySnapshot.empty) {
         const userDoc = querySnapshot.docs[0];
         const user = new User({ id: userDoc.id, ...userDoc.data() });
         
         // Check if token is still valid
-        if (user.passwordResetExpires && user.passwordResetExpires > new Date()) {
+        const expiresDate = user.passwordResetExpires?.toDate ? user.passwordResetExpires.toDate() : user.passwordResetExpires;
+        if (user.passwordResetExpires && expiresDate > new Date()) {
           return user;
         }
       }
@@ -143,19 +202,46 @@ class User {
   // Update user
   async update(updateData) {
     try {
-      const userRef = doc(db, 'users', this.id);
-      const updatedData = {
-        ...updateData,
-        updatedAt: new Date()
-      };
+      const userRef = db.collection('users').doc(this.id);
+      
+      // Update instance properties first
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] !== undefined) {
+          this[key] = updateData[key];
+        }
+      });
+      
+      // Always update the updatedAt timestamp
+      this.updatedAt = new Date();
+      
+      // Prepare clean update data for Firestore
+      const cleanUpdateData = { updatedAt: formatDateForFirestore(this.updatedAt) };
+      
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] !== undefined) {
+          if (key.includes('Date') || key.includes('Login') || key.includes('Until')) {
+            // Handle date fields
+            cleanUpdateData[key] = formatDateForFirestore(updateData[key]);
+          } else if (typeof updateData[key] === 'string' && key !== 'password') {
+            // Sanitize string fields (except password)
+            cleanUpdateData[key] = sanitizeString(updateData[key]);
+          } else {
+            cleanUpdateData[key] = updateData[key];
+          }
+        }
+      });
+      
+      console.log('🔧 Updating user in Firestore:', {
+        userId: this.id,
+        updateData: { ...cleanUpdateData, password: cleanUpdateData.password ? '[REDACTED]' : undefined }
+      });
 
-      await updateDoc(userRef, updatedData);
+      await userRef.update(cleanUpdateData);
       
-      // Update current instance
-      Object.assign(this, updatedData);
-      
+      console.log('✅ User updated successfully in Firestore');
       return this;
     } catch (error) {
+      console.error('❌ Error updating user:', error.message);
       throw new Error(`Error updating user: ${error.message}`);
     }
   }
@@ -218,7 +304,9 @@ class User {
 
   // Check if account is locked
   isLocked() {
-    return this.lockUntil && this.lockUntil > new Date();
+    if (!this.lockUntil) return false;
+    const lockDate = this.lockUntil?.toDate ? this.lockUntil.toDate() : this.lockUntil;
+    return lockDate > new Date();
   }
 
   // Update last login

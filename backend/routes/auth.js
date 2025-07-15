@@ -16,7 +16,9 @@ const {
   updateProfile,
   changePassword,
   githubSuccess,
-  githubFailure
+  githubFailure,
+  sendOTP,
+  verifyOTP
 } = require('../controllers/authController');
 
 // Import middleware
@@ -45,6 +47,10 @@ router.post('/logout', logout);
 // Email verification routes
 router.post('/verify-email', emailVerificationLimiter, validateEmailVerification, verifyEmail);
 router.post('/resend-verification', emailVerificationLimiter, resendVerificationEmail);
+
+// OTP routes
+router.post('/send-otp', sendOTP);
+router.post('/verify-otp', verifyOTP);
 
 // Password reset routes
 router.post('/request-password-reset', passwordResetLimiter, validatePasswordResetRequest, requestPasswordReset);

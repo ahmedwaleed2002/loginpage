@@ -1,31 +1,27 @@
-const { initializeApp } = require('firebase/app');
-const { getFirestore } = require('firebase/firestore');
-const { getAuth } = require('firebase/auth');
+const admin = require('firebase-admin');
+const path = require('path');
 require('dotenv').config();
 
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID,
-  measurementId: process.env.FIREBASE_MEASUREMENT_ID
-};
+// Initialize Firebase Admin SDK with service account
+const serviceAccount = require(path.join(__dirname, '..', 'serviceAccountKey.json'));
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    projectId: process.env.FIREBASE_PROJECT_ID || serviceAccount.project_id
+  });
+}
 
-// Initialize Firestore
-const db = getFirestore(app);
+// Get Firestore instance
+const db = admin.firestore();
 
-// Initialize Auth
-const auth = getAuth(app);
+// Get Auth instance
+const auth = admin.auth();
 
 module.exports = {
-  app,
+  admin,
   db,
   auth,
-  firebaseConfig
+  serviceAccount
 };

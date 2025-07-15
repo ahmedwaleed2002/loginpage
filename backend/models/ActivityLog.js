@@ -1,15 +1,4 @@
 const { db } = require('../config/firebase');
-const { 
-  collection, 
-  doc, 
-  setDoc, 
-  query, 
-  where, 
-  getDocs,
-  orderBy,
-  limit,
-  startAfter
-} = require('firebase/firestore');
 
 class ActivityLog {
   constructor(activityData) {
@@ -27,7 +16,7 @@ class ActivityLog {
   // Create a new activity log
   static async create(activityData) {
     try {
-      const activityRef = doc(collection(db, 'activity_logs'));
+      const activityRef = db.collection('activity_logs').doc();
       
       const newActivity = new ActivityLog({
         id: activityRef.id,
@@ -35,7 +24,7 @@ class ActivityLog {
         timestamp: new Date()
       });
 
-      await setDoc(activityRef, {
+      await activityRef.set({
         userId: newActivity.userId,
         action: newActivity.action,
         resource: newActivity.resource,
@@ -57,47 +46,35 @@ class ActivityLog {
     try {
       const { page = 1, limit: pageLimit = 20, action: actionFilter } = options;
       
-      let q = query(
-        collection(db, 'activity_logs'),
-        where('userId', '==', userId),
-        orderBy('timestamp', 'desc'),
-        limit(pageLimit)
-      );
+      let activityQuery = db.collection('activity_logs')
+        .where('userId', '==', userId)
+        .limit(pageLimit);
 
       // Add action filter if provided
       if (actionFilter) {
-        q = query(
-          collection(db, 'activity_logs'),
-          where('userId', '==', userId),
-          where('action', '==', actionFilter),
-          orderBy('timestamp', 'desc'),
-          limit(pageLimit)
-        );
+        activityQuery = db.collection('activity_logs')
+          .where('userId', '==', userId)
+          .where('action', '==', actionFilter)
+          .limit(pageLimit);
       }
 
-      // For pagination
+      // For pagination (simplified for now)
       if (page > 1) {
         const offset = (page - 1) * pageLimit;
-        const offsetQuery = query(
-          collection(db, 'activity_logs'),
-          where('userId', '==', userId),
-          orderBy('timestamp', 'desc'),
-          limit(offset)
-        );
-        const offsetSnapshot = await getDocs(offsetQuery);
+        const offsetQuery = db.collection('activity_logs')
+          .where('userId', '==', userId)
+          .limit(offset);
+        const offsetSnapshot = await offsetQuery.get();
         if (!offsetSnapshot.empty) {
           const lastDoc = offsetSnapshot.docs[offsetSnapshot.docs.length - 1];
-          q = query(
-            collection(db, 'activity_logs'),
-            where('userId', '==', userId),
-            orderBy('timestamp', 'desc'),
-            startAfter(lastDoc),
-            limit(pageLimit)
-          );
+          activityQuery = db.collection('activity_logs')
+            .where('userId', '==', userId)
+            .startAfter(lastDoc)
+            .limit(pageLimit);
         }
       }
 
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await activityQuery.get();
       const activities = [];
       
       querySnapshot.forEach((doc) => {
