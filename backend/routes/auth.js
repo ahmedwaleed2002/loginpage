@@ -10,6 +10,8 @@ const {
   logout,
   verifyEmail,
   resendVerificationEmail,
+  verifyRegistrationOTP,
+  resendRegistrationOTP,
   requestPasswordReset,
   resetPassword,
   resetPasswordWithOTP,
@@ -45,6 +47,10 @@ router.post('/logout', logout);
 // Email verification routes
 router.post('/verify-email', validateEmailVerification, verifyEmail);
 router.post('/resend-verification', resendVerificationEmail);
+
+// Registration OTP routes
+router.post('/verify-registration-otp', verifyRegistrationOTP);
+router.post('/resend-registration-otp', resendRegistrationOTP);
 
 // OTP routes
 router.post('/send-otp', sendOTP);

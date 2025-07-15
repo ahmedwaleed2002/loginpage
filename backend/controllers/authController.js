@@ -18,32 +18,42 @@ const register = async (req, res) => {
       });
     }
 
-    // Generate verification token
-    const verificationToken = generateVerificationToken();
+    // Generate OTP for email verification
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-    // Create user
+    // Create user (not verified initially)
     const user = await User.create({
       email,
       password,
       firstName,
       lastName,
-      verificationToken
+      isVerified: false,
+      otp,
+      otpExpires,
+      otpPurpose: 'registration'
     });
 
-    // Send verification email
+    // Send OTP email for registration verification
     try {
-      await sendVerificationEmail(email, verificationToken);
+      await sendOtpEmail(email, otp);
     } catch (emailError) {
-      console.error('Error sending verification email:', emailError);
-      // Don't fail registration if email fails
+      console.error('Error sending registration OTP:', emailError);
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to send verification code. Please try again or contact support.',
+        code: 'OTP_SEND_ERROR'
+      });
     }
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully. Please check your email for verification.',
-      code: 'REGISTRATION_SUCCESS',
+      message: 'Registration successful! Please check your email for the verification code to complete your account setup.',
+      code: 'REGISTRATION_OTP_SENT',
       data: {
-        user: user.getProfile()
+        email: email,
+        requiresVerification: true,
+        otpExpiresIn: 15 // minutes
       }
     });
 
@@ -813,6 +823,152 @@ const verifyOTP = async (req, res) => {
   }
 };
 
+// Verify registration OTP
+const verifyRegistrationOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    // Find user by email
+    const user = await User.findByEmail(email);
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'User not found. Please register again.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Check if user is already verified
+    if (user.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is already verified. You can now login.',
+        code: 'EMAIL_ALREADY_VERIFIED'
+      });
+    }
+
+    // Check if OTP exists and matches
+    if (!user.otp || user.otp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. Please check your email and try again.',
+        code: 'INVALID_OTP'
+      });
+    }
+
+    // Check if OTP is expired
+    const otpExpiresDate = user.otpExpires?.toDate ? user.otpExpires.toDate() : user.otpExpires;
+    if (!user.otpExpires || otpExpiresDate < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verification code has expired. Please request a new one.',
+        code: 'OTP_EXPIRED'
+      });
+    }
+
+    // Check if OTP purpose is for registration
+    if (user.otpPurpose !== 'registration') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. Please request a new one.',
+        code: 'INVALID_OTP_PURPOSE'
+      });
+    }
+
+    // Verify user and clear OTP
+    await user.update({
+      isVerified: true,
+      otp: null,
+      otpExpires: null,
+      otpPurpose: null
+    });
+
+    res.json({
+      success: true,
+      message: 'Email verified successfully! You can now login to your account.',
+      code: 'REGISTRATION_VERIFIED',
+      data: {
+        user: user.getProfile()
+      }
+    });
+
+  } catch (error) {
+    console.error('Registration OTP verification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error during verification',
+      code: 'REGISTRATION_OTP_VERIFICATION_ERROR'
+    });
+  }
+};
+
+// Resend registration OTP
+const resendRegistrationOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Find user by email
+    const user = await User.findByEmail(email);
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'User not found. Please register again.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Check if user is already verified
+    if (user.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is already verified. You can now login.',
+        code: 'EMAIL_ALREADY_VERIFIED'
+      });
+    }
+
+    // Generate new OTP
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    // Update user with new OTP
+    await user.update({
+      otp,
+      otpExpires,
+      otpPurpose: 'registration'
+    });
+
+    // Send OTP email
+    try {
+      await sendOtpEmail(email, otp);
+      
+      res.json({
+        success: true,
+        message: 'Verification code sent successfully to your email',
+        code: 'REGISTRATION_OTP_SENT',
+        data: {
+          email: email,
+          otpExpiresIn: 15 // minutes
+        }
+      });
+    } catch (emailError) {
+      console.error('Error sending registration OTP:', emailError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification code. Please try again.',
+        code: 'OTP_SEND_ERROR'
+      });
+    }
+
+  } catch (error) {
+    console.error('Resend registration OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      code: 'RESEND_REGISTRATION_OTP_ERROR'
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -820,6 +976,8 @@ module.exports = {
   logout,
   verifyEmail,
   resendVerificationEmail,
+  verifyRegistrationOTP,
+  resendRegistrationOTP,
   requestPasswordReset,
   resetPassword,
   resetPasswordWithOTP,
