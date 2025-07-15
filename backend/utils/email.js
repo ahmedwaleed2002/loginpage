@@ -97,51 +97,205 @@ const sendPasswordResetEmail = async (email, token) => {
   await sendEmail(email, subject, html);
 };
 
+// Enhanced HTML template for OTP emails
+const getOTPEmailTemplate = (otp, purpose = 'verification') => {
+  const purposeTexts = {
+    registration: {
+      title: 'Welcome to SpeedForce! 🚀',
+      subtitle: 'Complete your account setup',
+      greeting: 'Welcome to SpeedForce Digital!',
+      message: 'Thank you for joining us! To complete your account setup and start using our platform, please verify your email address with the code below:',
+      expiry: '15 minutes'
+    },
+    login: {
+      title: 'Secure Login Verification',
+      subtitle: 'Complete your login process',
+      greeting: 'Welcome back!',
+      message: 'We\'ve detected a login attempt on your account. Please enter the verification code below to complete your login securely:',
+      expiry: '10 minutes'
+    },
+    password_reset: {
+      title: 'Password Reset Request',
+      subtitle: 'Reset your account password',
+      greeting: 'Password Reset Request',
+      message: 'You\'ve requested to reset your password. Please use the verification code below to proceed with setting a new password:',
+      expiry: '15 minutes'
+    },
+    verification: {
+      title: 'Account Verification',
+      subtitle: 'Verify your account',
+      greeting: 'Account Verification Required',
+      message: 'Please verify your account using the code below to continue:',
+      expiry: '10 minutes'
+    }
+  };
+  
+  const content = purposeTexts[purpose] || purposeTexts.verification;
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpeedForce Digital - ${content.title}</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 35px;
+    }
+    .logo {
+      width: 90px;
+      height: 90px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 50%;
+      margin: 0 auto 25px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 28px;
+      font-weight: bold;
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+    }
+    .title {
+      color: #2c3e50;
+      font-size: 28px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #7f8c8d;
+      font-size: 16px;
+      margin-bottom: 30px;
+    }
+    .greeting {
+      color: #34495e;
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+    .otp-container {
+      background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+      border-radius: 15px;
+      padding: 30px;
+      text-align: center;
+      margin: 30px 0;
+      border: 2px solid #667eea;
+    }
+    .otp-code {
+      font-size: 36px;
+      font-weight: bold;
+      color: #667eea;
+      letter-spacing: 8px;
+      margin: 20px 0;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+      font-family: 'Courier New', monospace;
+    }
+    .otp-label {
+      color: #6c757d;
+      font-size: 14px;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+    .expiry-info {
+      color: #e74c3c;
+      font-size: 14px;
+      margin-top: 15px;
+      font-weight: bold;
+      background: #fee;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #fcc;
+    }
+    .content {
+      color: #555;
+      line-height: 1.6;
+      margin: 20px 0;
+      font-size: 15px;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 2px solid #eee;
+      text-align: center;
+      color: #999;
+      font-size: 12px;
+    }
+    .brand {
+      color: #667eea;
+      font-weight: bold;
+    }
+    .security-note {
+      background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+      border: 1px solid #ffc107;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 20px 0;
+      color: #856404;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">SF</div>
+      <div class="title">${content.title}</div>
+      <div class="subtitle">${content.subtitle}</div>
+    </div>
+    
+    <div class="content">
+      <div class="greeting">${content.greeting}</div>
+      <p>${content.message}</p>
+    </div>
+    
+    <div class="otp-container">
+      <div class="otp-label">Your Verification Code</div>
+      <div class="otp-code">${otp}</div>
+      <div class="expiry-info">⏰ This code expires in ${content.expiry}</div>
+    </div>
+    
+    <div class="content">
+      <p>Please enter this code in the application to continue. If you didn't request this code, please ignore this email.</p>
+    </div>
+    
+    <div class="security-note">
+      <strong>🔒 Security Note:</strong> Never share this code with anyone. SpeedForce Digital will never ask for your verification code via phone or email.
+    </div>
+    
+    <div class="footer">
+      <p>This email was sent by <span class="brand">SpeedForce Digital</span></p>
+      <p>If you're having trouble, please contact our support team.</p>
+      <p>© 2024 SpeedForce Digital. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
 // Send OTP email
-const sendOtpEmail = async (email, otp) => {
-  const subject = 'Your OTP Code - SpeedForce Digital';
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .header { text-align: center; margin-bottom: 30px; }
-        .logo { color: #11153f; font-size: 24px; font-weight: bold; }
-        .otp-code { background: #11153f; color: white; padding: 15px 30px; font-size: 24px; font-weight: bold; text-align: center; border-radius: 5px; margin: 20px 0; letter-spacing: 3px; }
-        .warning { color: #ed1e2b; font-size: 14px; margin-top: 20px; }
-        .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; text-align: center; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <div class="logo">SpeedForce Digital</div>
-          <h2 style="color: #11153f; margin: 10px 0;">Your OTP Code</h2>
-        </div>
-        
-        <p>Hello,</p>
-        <p>You have requested an OTP code for verification. Please use the code below to complete your action:</p>
-        
-        <div class="otp-code">${otp}</div>
-        
-        <p>This code will expire in <strong>10 minutes</strong> for security purposes.</p>
-        
-        <div class="warning">
-          <strong>Security Notice:</strong> If you did not request this code, please ignore this email or contact support immediately.
-        </div>
-        
-        <div class="footer">
-          <p>This is an automated message from SpeedForce Digital.</p>
-          <p>Please do not reply to this email.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
+const sendOtpEmail = async (email, otp, purpose = 'verification') => {
+  const subject = `SpeedForce Digital - ${purpose === 'registration' ? 'Welcome!' : 'Verification Code'}`;
+  const html = getOTPEmailTemplate(otp, purpose);
   await sendEmail(email, subject, html);
 };
 

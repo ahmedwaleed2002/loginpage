@@ -57,10 +57,20 @@ class User {
     this.loginAttempts = Number(userData.loginAttempts) || 0;
     this.lockUntil = toDate(userData.lockUntil);
     
-    // OTP fields
-    this.otp = userData.otp || null;
-    this.otpExpires = toDate(userData.otpExpires);
-    this.otpPurpose = userData.otpPurpose || null;
+    // Verification object for better organization
+    this.verification = {
+      otp: userData.otp || (userData.verification && userData.verification.otp) || null,
+      expires: toDate(userData.otpExpires || (userData.verification && userData.verification.expires)),
+      purpose: userData.otpPurpose || (userData.verification && userData.verification.purpose) || null
+    };
+    
+    // User status for better account management
+    this.status = userData.status || 'active'; // active, suspended, deleted
+    
+    // Backward compatibility for existing OTP fields
+    this.otp = this.verification.otp;
+    this.otpExpires = this.verification.expires;
+    this.otpPurpose = this.verification.purpose;
     
     // GitHub OAuth fields
     this.githubId = userData.githubId || null;
@@ -94,6 +104,16 @@ class User {
     if (this.otp) data.otp = this.otp;
     if (this.otpExpires) data.otpExpires = formatDateForFirestore(this.otpExpires);
     if (this.otpPurpose) data.otpPurpose = this.otpPurpose;
+    
+    // Add new fields
+    if (this.verification) {
+      data.verification = {
+        otp: this.verification.otp,
+        expires: this.verification.expires ? formatDateForFirestore(this.verification.expires) : null,
+        purpose: this.verification.purpose
+      };
+    }
+    if (this.status) data.status = this.status;
     
     return data;
   }

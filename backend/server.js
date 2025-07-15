@@ -8,6 +8,7 @@ const morgan = require('morgan');
 const session = require('express-session');
 console.log('🔐 Loading passport configuration...');
 const passport = require('./config/passport');
+const { errorHandler } = require('./middleware/errorHandler');
 require('dotenv').config();
 console.log('✅ All modules loaded successfully!');
 
@@ -76,15 +77,8 @@ app.use((req, res) => {
   });
 });
 
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: 'Internal Server Error',
-    code: 'SERVER_ERROR'
-  });
-});
+// Enhanced error handler
+app.use(errorHandler);
 
 // Start server
 const server = app.listen(port, '0.0.0.0', () => {

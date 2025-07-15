@@ -1,7 +1,9 @@
 const User = require('../models/User');
 const ActivityLog = require('../models/ActivityLog');
+const OTPLog = require('../models/OTPLog');
 const { generateTokens, generateVerificationToken, generatePasswordResetToken, generateOTP, setTokenCookies, clearTokenCookies } = require('../utils/jwt');
 const { sendVerificationEmail, sendPasswordResetEmail, sendOtpEmail } = require('../utils/email');
+const { AppError, asyncHandler } = require('../middleware/errorHandler');
 
 // Register a new user
 const register = async (req, res) => {
@@ -11,11 +13,68 @@ const register = async (req, res) => {
     // Check if user already exists
     const existingUser = await User.findByEmail(email);
     if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'User with this email already exists',
-        code: 'USER_ALREADY_EXISTS'
-      });
+      // If user exists but is not verified, allow resending OTP
+      if (!existingUser.isVerified) {
+        const now = new Date();
+        const currentOtpExpires = existingUser.otpExpires?.toDate ? existingUser.otpExpires.toDate() : existingUser.otpExpires;
+        
+        // Check if existing OTP is still valid
+        if (existingUser.otp && currentOtpExpires && currentOtpExpires > now && existingUser.otpPurpose === 'registration') {
+          const timeRemaining = Math.ceil((currentOtpExpires - now) / (1000 * 60));
+          return res.status(200).json({
+            success: true,
+            message: `Registration OTP was already sent to your email. Please check your inbox and enter the code. Code expires in ${timeRemaining} minutes.`,
+            code: 'REGISTRATION_OTP_SENT',
+            data: {
+              email: email,
+              requiresVerification: true,
+              otpExpiresIn: timeRemaining,
+              newOtpSent: false
+            }
+          });
+        }
+        
+        // Generate new OTP if existing one is expired
+        const otp = generateOTP();
+        const otpExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+        
+        await existingUser.update({
+          otp,
+          otpExpires,
+          otpPurpose: 'registration'
+        });
+        
+        try {
+          await sendOtpEmail(email, otp, 'registration');
+          await OTPLog.logOTPRequest(email, 'registration', 'sent', req.ip, req.headers['user-agent']);
+        } catch (emailError) {
+          console.error('Error sending registration OTP:', emailError);
+          await OTPLog.logOTPRequest(email, 'registration', 'failed', req.ip, req.headers['user-agent'], false, emailError.message);
+          return res.status(500).json({
+            success: false,
+            message: 'Unable to send verification code. Please try again or contact support.',
+            code: 'OTP_SEND_ERROR'
+          });
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'New verification code sent! Please check your email for the verification code to complete your account setup.',
+          code: 'REGISTRATION_OTP_SENT',
+          data: {
+            email: email,
+            requiresVerification: true,
+            otpExpiresIn: 15,
+            newOtpSent: true
+          }
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'User with this email already exists and is verified. Please login instead.',
+          code: 'USER_ALREADY_EXISTS'
+        });
+      }
     }
 
     // Generate OTP for email verification
@@ -36,9 +95,17 @@ const register = async (req, res) => {
 
     // Send OTP email for registration verification
     try {
-      await sendOtpEmail(email, otp);
+      await sendOtpEmail(email, otp, 'registration');
+      
+      // Log OTP request
+      await OTPLog.logOTPRequest(email, 'registration', 'sent', req.ip, req.headers['user-agent']);
+      
     } catch (emailError) {
       console.error('Error sending registration OTP:', emailError);
+      
+      // Log failed OTP request
+      await OTPLog.logOTPRequest(email, 'registration', 'failed', req.ip, req.headers['user-agent'], false, emailError.message);
+      
       return res.status(500).json({
         success: false,
         message: 'Unable to send verification code. Please try again or contact support.',
@@ -120,37 +187,71 @@ const login = async (req, res) => {
     // Reset login attempts on successful password verification
     await user.resetLoginAttempts();
     
-    // Generate and send OTP for 2-step authentication
-    const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    await user.update({
-      otp,
-      otpExpires,
-      otpPurpose: 'login',
-      rememberMe: rememberMe
-    });
-
-    // Send OTP email
-    try {
-      await sendOtpEmail(email, otp);
-    } catch (emailError) {
-      console.error('Error sending login OTP:', emailError);
-      return res.status(500).json({
-        success: false,
-        message: 'Unable to send verification code. Please try again or contact support.',
-        code: 'OTP_SEND_ERROR'
+    // Check if user already has a valid OTP
+    let otp = user.otp;
+    let otpExpires = user.otpExpires;
+    let shouldSendNewOTP = false;
+    
+    const now = new Date();
+    const currentOtpExpires = user.otpExpires?.toDate ? user.otpExpires.toDate() : user.otpExpires;
+    
+    // Generate new OTP only if:
+    // 1. No existing OTP
+    // 2. Existing OTP is expired
+    // 3. Existing OTP is not for login purpose
+    if (!otp || !currentOtpExpires || currentOtpExpires < now || user.otpPurpose !== 'login') {
+      otp = generateOTP();
+      otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      shouldSendNewOTP = true;
+      
+      await user.update({
+        otp,
+        otpExpires,
+        otpPurpose: 'login',
+        rememberMe: rememberMe
+      });
+    } else {
+      // Update remember me preference but keep existing OTP
+      await user.update({
+        rememberMe: rememberMe
       });
     }
 
+    // Send OTP email only if new OTP was generated
+    if (shouldSendNewOTP) {
+      try {
+        await sendOtpEmail(email, otp, 'login');
+        
+        // Log OTP request
+        await OTPLog.logOTPRequest(email, 'login', 'sent', req.ip, req.headers['user-agent']);
+        
+      } catch (emailError) {
+        console.error('Error sending login OTP:', emailError);
+        
+        // Log failed OTP request
+        await OTPLog.logOTPRequest(email, 'login', 'failed', req.ip, req.headers['user-agent'], false, emailError.message);
+        
+        return res.status(500).json({
+          success: false,
+          message: 'Unable to send verification code. Please try again or contact support.',
+          code: 'OTP_SEND_ERROR'
+        });
+      }
+    }
+
+    const timeRemaining = Math.ceil((otpExpires - now) / (1000 * 60));
+    
     res.json({
       success: true,
-      message: 'Password verified successfully. Please check your email for the verification code to complete login.',
+      message: shouldSendNewOTP 
+        ? 'Password verified successfully. Please check your email for the verification code to complete login.'
+        : `Please enter the verification code sent to your email. Code expires in ${timeRemaining} minutes.`,
       code: 'OTP_REQUIRED',
       data: {
         email: user.email,
         requiresOTP: true,
-        otpExpiresIn: 10 // minutes
+        otpExpiresIn: timeRemaining,
+        newOtpSent: shouldSendNewOTP
       }
     });
 
