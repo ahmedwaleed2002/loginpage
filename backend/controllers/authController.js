@@ -57,7 +57,7 @@ const register = async (req, res) => {
   }
 };
 
-// Login user
+// Login user (Step 1: Password verification)
 const login = async (req, res) => {
   try {
     const { email, password, rememberMe = false } = req.body;
@@ -67,17 +67,19 @@ const login = async (req, res) => {
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid credentials',
-        code: 'INVALID_CREDENTIALS'
+        message: 'The email address you entered is not registered. Please check your email or sign up for a new account.',
+        code: 'USER_NOT_FOUND'
       });
     }
 
     // Check if account is locked
     if (user.isLocked()) {
+      const lockTime = Math.ceil((user.lockUntil - new Date()) / (1000 * 60));
       return res.status(423).json({
         success: false,
-        message: 'Account is temporarily locked due to too many failed login attempts',
-        code: 'ACCOUNT_LOCKED'
+        message: `Your account has been temporarily locked due to multiple failed login attempts. Please try again in ${lockTime} minutes or reset your password.`,
+        code: 'ACCOUNT_LOCKED',
+        lockTimeMinutes: lockTime
       });
     }
 
@@ -85,29 +87,122 @@ const login = async (req, res) => {
     const isPasswordValid = await user.verifyPassword(password);
     if (!isPasswordValid) {
       await user.incrementLoginAttempts();
+      const remainingAttempts = 5 - user.loginAttempts - 1;
       return res.status(400).json({
         success: false,
-        message: 'Invalid credentials',
-        code: 'INVALID_CREDENTIALS'
+        message: remainingAttempts > 0 
+          ? `Incorrect password. You have ${remainingAttempts} attempts remaining before your account is locked.`
+          : 'Too many failed login attempts. Your account will be locked temporarily.',
+        code: 'INVALID_PASSWORD',
+        remainingAttempts: Math.max(0, remainingAttempts)
       });
     }
 
-    // Check if email is verified (temporarily disabled for testing)
-    // if (!user.isVerified) {
-    //   return res.status(401).json({
-    //     success: false,
-    //     message: 'Please verify your email before logging in',
-    //     code: 'EMAIL_NOT_VERIFIED'
-    //   });
-    // }
+    // Check if email is verified
+    if (!user.isVerified) {
+      return res.status(401).json({
+        success: false,
+        message: 'Please verify your email address before logging in. Check your inbox for the verification email.',
+        code: 'EMAIL_NOT_VERIFIED'
+      });
+    }
 
-    // Reset login attempts on successful login
+    // Reset login attempts on successful password verification
     await user.resetLoginAttempts();
     
-    // Update last login and remember me preference
-    await user.update({ 
-      lastLogin: new Date(),
+    // Generate and send OTP for 2-step authentication
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await user.update({
+      otp,
+      otpExpires,
+      otpPurpose: 'login',
       rememberMe: rememberMe
+    });
+
+    // Send OTP email
+    try {
+      await sendOtpEmail(email, otp);
+    } catch (emailError) {
+      console.error('Error sending login OTP:', emailError);
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to send verification code. Please try again or contact support.',
+        code: 'OTP_SEND_ERROR'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Password verified successfully. Please check your email for the verification code to complete login.',
+      code: 'OTP_REQUIRED',
+      data: {
+        email: user.email,
+        requiresOTP: true,
+        otpExpiresIn: 10 // minutes
+      }
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'We\'re experiencing technical difficulties. Please try again in a few moments.',
+      code: 'LOGIN_ERROR'
+    });
+  }
+};
+
+// Complete login with OTP (Step 2: OTP verification)
+const completeLogin = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    // Find user by email
+    const user = await User.findByEmail(email);
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'User not found. Please start the login process again.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Check if OTP exists and matches
+    if (!user.otp || user.otp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. Please check your email and try again.',
+        code: 'INVALID_OTP'
+      });
+    }
+
+    // Check if OTP is expired
+    const otpExpiresDate = user.otpExpires?.toDate ? user.otpExpires.toDate() : user.otpExpires;
+    if (!user.otpExpires || otpExpiresDate < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verification code has expired. Please request a new one by logging in again.',
+        code: 'OTP_EXPIRED'
+      });
+    }
+
+    // Check if OTP purpose is for login
+    if (user.otpPurpose !== 'login') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. Please request a new one by logging in again.',
+        code: 'INVALID_OTP_PURPOSE'
+      });
+    }
+
+    // Clear OTP and update last login
+    await user.update({
+      otp: null,
+      otpExpires: null,
+      otpPurpose: null,
+      lastLogin: new Date()
     });
 
     // Log the login activity
@@ -117,11 +212,11 @@ const login = async (req, res) => {
     const { token, refreshToken } = generateTokens(user);
 
     // Set cookies
-    setTokenCookies(res, token, refreshToken, rememberMe);
+    setTokenCookies(res, token, refreshToken, user.rememberMe);
 
     res.json({
       success: true,
-      message: 'Login successful',
+      message: 'Login completed successfully. Welcome back!',
       code: 'LOGIN_SUCCESS',
       data: {
         user: user.getProfile(),
@@ -131,11 +226,11 @@ const login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Complete login error:', error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error during login',
-      code: 'LOGIN_ERROR'
+      message: 'We\'re experiencing technical difficulties. Please try again in a few moments.',
+      code: 'COMPLETE_LOGIN_ERROR'
     });
   }
 };
@@ -268,49 +363,125 @@ const requestPasswordReset = async (req, res) => {
     // Find user by email
     const user = await User.findByEmail(email);
     if (!user) {
-      // Don't reveal if user exists or not
+      // Don't reveal if user exists or not for security
       return res.json({
         success: true,
-        message: 'If your email is registered, you will receive a password reset link',
+        message: 'If your email is registered with us, you will receive a password reset verification code shortly. Please check your inbox and spam folder.',
         code: 'PASSWORD_RESET_REQUESTED'
       });
     }
 
-    // Generate password reset token
-    const passwordResetToken = generatePasswordResetToken();
-    const passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    // Generate OTP for password reset
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
-    // Update user with reset token
+    // Update user with OTP
     await user.update({
-      passwordResetToken,
-      passwordResetExpires
+      otp,
+      otpExpires,
+      otpPurpose: 'password_reset'
     });
 
-    // Send password reset email
+    // Send OTP email for password reset
     try {
-      await sendPasswordResetEmail(email, passwordResetToken);
+      await sendOtpEmail(email, otp);
     } catch (emailError) {
-      console.error('Error sending password reset email:', emailError);
-      // Don't fail the request if email fails
+      console.error('Error sending password reset OTP:', emailError);
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to send password reset code. Please try again or contact support if the problem persists.',
+        code: 'EMAIL_SEND_ERROR'
+      });
     }
 
     res.json({
       success: true,
-      message: 'If your email is registered, you will receive a password reset link',
-      code: 'PASSWORD_RESET_REQUESTED'
+      message: 'A password reset verification code has been sent to your email. Please check your inbox and enter the code to continue.',
+      code: 'PASSWORD_RESET_OTP_SENT',
+      data: {
+        email: email,
+        otpExpiresIn: 15 // minutes
+      }
     });
 
   } catch (error) {
     console.error('Password reset request error:', error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'We\'re experiencing technical difficulties. Please try again in a few moments.',
       code: 'PASSWORD_RESET_REQUEST_ERROR'
     });
   }
 };
 
-// Reset password
+// Reset password with OTP
+const resetPasswordWithOTP = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    // Find user by email
+    const user = await User.findByEmail(email);
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'User not found. Please start the password reset process again.',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Check if OTP exists and matches
+    if (!user.otp || user.otp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. Please check your email and try again.',
+        code: 'INVALID_OTP'
+      });
+    }
+
+    // Check if OTP is expired
+    const otpExpiresDate = user.otpExpires?.toDate ? user.otpExpires.toDate() : user.otpExpires;
+    if (!user.otpExpires || otpExpiresDate < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verification code has expired. Please request a new password reset.',
+        code: 'OTP_EXPIRED'
+      });
+    }
+
+    // Check if OTP purpose is for password reset
+    if (user.otpPurpose !== 'password_reset') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid verification code. Please request a new password reset.',
+        code: 'INVALID_OTP_PURPOSE'
+      });
+    }
+
+    // Update password and clear OTP
+    await user.updatePassword(newPassword);
+    await user.update({
+      otp: null,
+      otpExpires: null,
+      otpPurpose: null
+    });
+
+    res.json({
+      success: true,
+      message: 'Password has been reset successfully. You can now log in with your new password.',
+      code: 'PASSWORD_RESET_SUCCESS'
+    });
+
+  } catch (error) {
+    console.error('Password reset error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'We\'re experiencing technical difficulties. Please try again in a few moments.',
+      code: 'PASSWORD_RESET_ERROR'
+    });
+  }
+};
+
+// Legacy reset password (kept for backward compatibility)
 const resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -645,11 +816,13 @@ const verifyOTP = async (req, res) => {
 module.exports = {
   register,
   login,
+  completeLogin,
   logout,
   verifyEmail,
   resendVerificationEmail,
   requestPasswordReset,
   resetPassword,
+  resetPasswordWithOTP,
   refreshToken,
   getProfile,
   updateProfile,

@@ -6,11 +6,13 @@ const passport = require('../config/passport');
 const {
   register,
   login,
+  completeLogin,
   logout,
   verifyEmail,
   resendVerificationEmail,
   requestPasswordReset,
   resetPassword,
+  resetPasswordWithOTP,
   refreshToken,
   getProfile,
   updateProfile,
@@ -42,6 +44,7 @@ const {
 // Authentication routes
 router.post('/register', registrationLimiter, validateRegistration, register);
 router.post('/login', authLimiter, validateLogin, login);
+router.post('/complete-login', authLimiter, completeLogin);
 router.post('/logout', logout);
 
 // Email verification routes
@@ -55,6 +58,7 @@ router.post('/verify-otp', verifyOTP);
 // Password reset routes
 router.post('/request-password-reset', passwordResetLimiter, validatePasswordResetRequest, requestPasswordReset);
 router.post('/reset-password', validatePasswordReset, resetPassword);
+router.post('/reset-password-otp', resetPasswordWithOTP);
 
 // Token management routes
 router.post('/refresh-token', verifyRefreshToken, refreshToken);

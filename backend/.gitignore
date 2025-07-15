@@ -12,6 +12,10 @@ yarn-error.log*
 # Firebase service account key
 serviceAccountKey.json
 
+# Firebase credentials
+firebase-service-account-*.json
+firebase-adminsdk-*.json
+
 # Logs
 logs/
 *.log

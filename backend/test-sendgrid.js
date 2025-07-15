@@ -11,9 +11,9 @@ async function testSendGrid() {
     console.log('📧 From Email:', process.env.SENDGRID_FROM_EMAIL);
     
     const msg = {
-      to: 'awby2002+1@gmail.com', // Your email
+      to: 'ahmedwaleedusa@gmail.com', // Ahmed's email
       from: process.env.SENDGRID_FROM_EMAIL, // Use the verified sender
-      subject: 'SendGrid Test Email',
+      subject: 'SendGrid Test Email - SpeedForce Digital',
       text: 'This is a test email from SendGrid integration.',
       html: '<strong>This is a test email from SendGrid integration.</strong>',
     };
