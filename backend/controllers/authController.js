@@ -98,14 +98,14 @@ const login = async (req, res) => {
       });
     }
 
-    // Check if email is verified
-    if (!user.isVerified) {
-      return res.status(401).json({
-        success: false,
-        message: 'Please verify your email address before logging in. Check your inbox for the verification email.',
-        code: 'EMAIL_NOT_VERIFIED'
-      });
-    }
+    // Check if email is verified (temporarily disabled for development)
+    // if (!user.isVerified) {
+    //   return res.status(401).json({
+    //     success: false,
+    //     message: 'Please verify your email address before logging in. Check your inbox for the verification email.',
+    //     code: 'EMAIL_NOT_VERIFIED'
+    //   });
+    // }
 
     // Reset login attempts on successful password verification
     await user.resetLoginAttempts();
