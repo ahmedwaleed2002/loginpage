@@ -122,3 +122,99 @@ dist/
 
 # Test files
 test-api.js
+
+# ======================================
+# SENSITIVE AUTHENTICATION SYSTEM FILES
+# ======================================
+
+# Environment files (CRITICAL - Contains API keys, secrets, DB credentials)
+backend/.env
+frontend/.env
+.env.*
+*.env
+
+# Firebase sensitive files
+**/firebase-adminsdk-*.json
+**/serviceAccountKey.json
+**/firebase-service-account.json
+firebase.json
+.firebaserc
+
+# JWT & Authentication secrets
+**/jwt-private-key.pem
+**/jwt-public-key.pem
+**/auth-secrets.json
+
+# SendGrid & Email service
+**/sendgrid-config.json
+**/email-templates-private/
+
+# OAuth credentials
+**/oauth-config.json
+**/github-oauth.json
+
+# Database dumps and backups
+**/database-backup.json
+**/firestore-export/
+**/db-dump.*
+
+# Security certificates and keys
+**/certificates/
+**/ssl/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Session and cache files
+**/sessions/
+**/redis-dump.rdb
+
+# Test files with sensitive data
+test-comprehensive.js
+test-endpoints.js
+test-otp-functionality.js
+test-sendgrid.js
+test-firebase.js
+**/test-results.json
+**/test-credentials.json
+
+# User uploaded content
+**/uploads/
+**/user-files/
+**/profile-images/
+
+# Backup and temporary auth files
+**/auth-backup-*.json
+**/temp-users.json
+**/otp-logs-backup.json
+
+# IDE specific files with project secrets
+**/.env.development
+**/.env.staging
+**/.env.production
+.vscode/settings.json
+.idea/workspace.xml
+
+# Package manager files that might contain auth tokens
+.npmrc
+.yarnrc
+.yarn/
+
+# Docker files with secrets
+**/docker-compose.override.yml
+**/Dockerfile.local
+
+# Monitoring and analytics
+**/analytics-config.json
+**/monitoring-keys.json
+
+# Development and debug files
+**/debug-session.json
+**/development-users.json
+**/mock-data-real.json
+
+# Project documentation with sensitive information
+agent.md

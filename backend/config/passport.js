@@ -3,6 +3,12 @@ const GitHubStrategy = require('passport-github2').Strategy;
 const User = require('../models/User');
 const { generateTokens } = require('../utils/jwt');
 
+// Debug environment variables
+console.log('🔍 Debugging GitHub OAuth environment variables:');
+console.log('GITHUB_CLIENT_ID:', process.env.GITHUB_CLIENT_ID ? 'Set' : 'Not set');
+console.log('GITHUB_CLIENT_SECRET:', process.env.GITHUB_CLIENT_SECRET ? 'Set' : 'Not set');
+console.log('GITHUB_CALLBACK_URL:', process.env.GITHUB_CALLBACK_URL);
+
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });

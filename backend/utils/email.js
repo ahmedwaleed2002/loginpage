@@ -47,8 +47,9 @@ const sendEmail = async (to, subject, html) => {
     }
   } catch (error) {
     console.error(`❌ Email Error:`, error.response?.body || error.message);
+    console.error('Full Error:', error.toString()); // Additional logging for the error
     
-    // If SendGrid fails, fallback to mock service in development
+    // If SendGrid fails, log error details
     if (process.env.NODE_ENV === 'development') {
       console.log('🔄 Falling back to mock email service...');
       const msg = {
@@ -63,6 +64,7 @@ const sendEmail = async (to, subject, html) => {
     
     if (error.response?.body?.errors) {
       const errorMessages = error.response.body.errors.map(err => err.message).join(', ');
+      console.error(`SendGrid Error Details: ${errorMessages}`); // Log detailed SendGrid errors
       throw new Error(`SendGrid Error: ${errorMessages}`);
     }
     throw new Error(`Error sending email: ${error.message}`);

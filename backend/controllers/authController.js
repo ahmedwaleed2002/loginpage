@@ -187,72 +187,30 @@ const login = async (req, res) => {
     // Reset login attempts on successful password verification
     await user.resetLoginAttempts();
     
-    // Check if user already has a valid OTP
-    let otp = user.otp;
-    let otpExpires = user.otpExpires;
-    let shouldSendNewOTP = false;
-    
-    const now = new Date();
-    const currentOtpExpires = user.otpExpires?.toDate ? user.otpExpires.toDate() : user.otpExpires;
-    
-    // Generate new OTP only if:
-    // 1. No existing OTP
-    // 2. Existing OTP is expired
-    // 3. Existing OTP is not for login purpose
-    if (!otp || !currentOtpExpires || currentOtpExpires < now || user.otpPurpose !== 'login') {
-      otp = generateOTP();
-      otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-      shouldSendNewOTP = true;
-      
-      await user.update({
-        otp,
-        otpExpires,
-        otpPurpose: 'login',
-        rememberMe: rememberMe
-      });
-    } else {
-      // Update remember me preference but keep existing OTP
-      await user.update({
-        rememberMe: rememberMe
+    // Check if user is verified
+    if (user.isVerified) {
+      // User is verified, bypass OTP and go directly to dashboard
+      const { token, refreshToken } = generateTokens(user);
+      setTokenCookies(res, token, refreshToken, rememberMe);
+
+      await ActivityLog.logLogin(user.id, req.ip, req.headers['user-agent']);
+
+      return res.json({
+        success: true,
+        message: 'Login successful. Redirecting to dashboard.',
+        code: 'LOGIN_SUCCESS',
+        data: {
+          user: user.getProfile(),
+          token,
+          refreshToken
+        }
       });
     }
-
-    // Send OTP email only if new OTP was generated
-    if (shouldSendNewOTP) {
-      try {
-        await sendOtpEmail(email, otp, 'login');
-        
-        // Log OTP request
-        await OTPLog.logOTPRequest(email, 'login', 'sent', req.ip, req.headers['user-agent']);
-        
-      } catch (emailError) {
-        console.error('Error sending login OTP:', emailError);
-        
-        // Log failed OTP request
-        await OTPLog.logOTPRequest(email, 'login', 'failed', req.ip, req.headers['user-agent'], false, emailError.message);
-        
-        return res.status(500).json({
-          success: false,
-          message: 'Unable to send verification code. Please try again or contact support.',
-          code: 'OTP_SEND_ERROR'
-        });
-      }
-    }
-
-    const timeRemaining = Math.ceil((otpExpires - now) / (1000 * 60));
-    
-    res.json({
-      success: true,
-      message: shouldSendNewOTP 
-        ? 'Password verified successfully. Please check your email for the verification code to complete login.'
-        : `Please enter the verification code sent to your email. Code expires in ${timeRemaining} minutes.`,
-      code: 'OTP_REQUIRED',
-      data: {
-        email: user.email,
-        requiresOTP: true,
-        otpExpiresIn: timeRemaining,
-        newOtpSent: shouldSendNewOTP
-      }
+    // User is not verified, so redirect them to an error or provide instructions to verify
+    return res.status(403).json({
+      success: false,
+      message: 'Please verify your email before logging in.',
+      code: 'EMAIL_NOT_VERIFIED'
     });
 
   } catch (error) {
@@ -981,15 +939,27 @@ const verifyRegistrationOTP = async (req, res) => {
       isVerified: true,
       otp: null,
       otpExpires: null,
-      otpPurpose: null
+      otpPurpose: null,
+      lastLogin: new Date()
     });
+
+    // Log the registration completion activity
+    await ActivityLog.logLogin(user.id, req.ip, req.headers['user-agent']);
+
+    // Generate tokens for automatic login after verification
+    const { token, refreshToken } = generateTokens(user);
+
+    // Set cookies
+    setTokenCookies(res, token, refreshToken, false);
 
     res.json({
       success: true,
-      message: 'Email verified successfully! You can now login to your account.',
+      message: 'Email verified successfully! Welcome to SpeedForce Digital.',
       code: 'REGISTRATION_VERIFIED',
       data: {
-        user: user.getProfile()
+        user: user.getProfile(),
+        token,
+        refreshToken
       }
     });
 

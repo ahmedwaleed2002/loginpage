@@ -1,3 +1,7 @@
+// Load environment variables first
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 console.log('📚 Loading required modules...');
 const express = require('express');
 const cors = require('cors');
@@ -9,7 +13,6 @@ const session = require('express-session');
 console.log('🔐 Loading passport configuration...');
 const passport = require('./config/passport');
 const { errorHandler } = require('./middleware/errorHandler');
-require('dotenv').config();
 console.log('✅ All modules loaded successfully!');
 
 const app = express();
