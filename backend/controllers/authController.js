@@ -8,7 +8,7 @@ const { AppError, asyncHandler } = require('../middleware/errorHandler');
 // Register a new user
 const register = async (req, res) => {
   try {
-    const { email, password, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName, phoneNumber, address } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findByEmail(email);
@@ -87,6 +87,8 @@ const register = async (req, res) => {
       password,
       firstName,
       lastName,
+      phoneNumber,
+      address,
       isVerified: false,
       otp,
       otpExpires,
@@ -176,13 +178,13 @@ const login = async (req, res) => {
     }
 
     // Check if email is verified (temporarily disabled for development)
-    // if (!user.isVerified) {
-    //   return res.status(401).json({
-    //     success: false,
-    //     message: 'Please verify your email address before logging in. Check your inbox for the verification email.',
-    //     code: 'EMAIL_NOT_VERIFIED'
-    //   });
-    // }
+    if (!user.isVerified) {
+      return res.status(401).json({
+        success: false,
+        message: 'Please verify your email address before logging in. Check your inbox for the verification email.',
+        code: 'EMAIL_NOT_VERIFIED'
+      });
+    }
 
     // Reset login attempts on successful password verification
     await user.resetLoginAttempts();

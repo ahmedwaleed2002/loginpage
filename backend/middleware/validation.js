@@ -47,6 +47,24 @@ const validateRegistration = [
     .matches(/^[a-zA-Z\s]+$/)
     .withMessage('Last name can only contain letters and spaces'),
   
+  body('phoneNumber')
+    .trim()
+    .notEmpty()
+    .withMessage('Phone number is required')
+    .matches(/^[\+]?[1-9]?\d{1,4}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{1,4}[\s\-]?\d{1,9}$/)
+    .withMessage('Please provide a valid phone number (e.g., +1-234-567-8900, (234) 567-8900, 234-567-8900)')
+    .isLength({ min: 10, max: 20 })
+    .withMessage('Phone number must be between 10 and 20 characters'),
+  
+  body('address')
+    .trim()
+    .notEmpty()
+    .withMessage('Address is required')
+    .isLength({ min: 10, max: 200 })
+    .withMessage('Address must be between 10 and 200 characters')
+    .matches(/^[a-zA-Z0-9\s\.,\#\-\/]+$/)
+    .withMessage('Address can only contain letters, numbers, spaces, and common punctuation (.,#-/)'),
+  
   handleValidationErrors
 ];
 
@@ -134,6 +152,22 @@ const validateProfileUpdate = [
     .normalizeEmail()
     .isLength({ min: 5, max: 255 })
     .withMessage('Email must be between 5 and 255 characters'),
+  
+  body('phoneNumber')
+    .optional()
+    .trim()
+    .matches(/^[\+]?[1-9]?\d{1,4}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{1,4}[\s\-]?\d{1,9}$/)
+    .withMessage('Please provide a valid phone number (e.g., +1-234-567-8900, (234) 567-8900, 234-567-8900)')
+    .isLength({ min: 10, max: 20 })
+    .withMessage('Phone number must be between 10 and 20 characters'),
+  
+  body('address')
+    .optional()
+    .trim()
+    .isLength({ min: 10, max: 200 })
+    .withMessage('Address must be between 10 and 200 characters')
+    .matches(/^[a-zA-Z0-9\s\.,\#\-\/]+$/)
+    .withMessage('Address can only contain letters, numbers, spaces, and common punctuation (.,#-/)'),
   
   handleValidationErrors
 ];

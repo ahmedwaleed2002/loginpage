@@ -46,6 +46,8 @@ class User {
     this.password = userData.password; // Never sanitize password
     this.firstName = sanitizeString(userData.firstName || '');
     this.lastName = sanitizeString(userData.lastName || '');
+    this.phoneNumber = sanitizeString(userData.phoneNumber || '');
+    this.address = sanitizeString(userData.address || '');
     this.isVerified = Boolean(userData.isVerified);
     this.verificationToken = userData.verificationToken || null;
     this.passwordResetToken = userData.passwordResetToken || null;
@@ -84,6 +86,8 @@ class User {
       email: this.email,
       firstName: this.firstName,
       lastName: this.lastName,
+      phoneNumber: this.phoneNumber,
+      address: this.address,
       isVerified: this.isVerified,
       rememberMe: this.rememberMe,
       loginAttempts: this.loginAttempts,
@@ -346,6 +350,8 @@ class User {
       email: this.email,
       firstName: this.firstName,
       lastName: this.lastName,
+      phoneNumber: this.phoneNumber,
+      address: this.address,
       isVerified: this.isVerified,
       lastLogin: this.lastLogin,
       createdAt: this.createdAt
